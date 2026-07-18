@@ -27,7 +27,14 @@ hf semsearch trending [datasets|models]              # what's trending
 hf semsearch status                                  # backend health + index freshness
 ```
 
-Common options: `-k N` (results — `trending` also accepts `-k`, with `-n`/`--limit` as aliases), `--sort-by likes|downloads`, `--min-likes`, `--min-downloads`; models also take `--min-params` / `--max-params`, which accept size suffixes (`2B`, `500M`, `1.5B`) or plain ints. `similar` takes `--type dataset|model` to skip auto-detection. Invalid input (empty query, `-k 0`, an unparseable size) fails fast client-side with a one-line remedy — never a raw backend error.
+Common options: `-k N` (results — `trending` also accepts `-k`, with `-n`/`--limit` as aliases), `--sort-by likes|downloads`, `--min-likes`, `--min-downloads`; models also take `--min-params` / `--max-params`, which accept size suffixes (`2B`, `500M`, `1.5B`) or plain ints. `similar` takes `--type dataset|model` to skip auto-detection (otherwise it resolves the type in one `/lookup` call). Invalid input (empty query, `-k 0`, an unparseable size) fails fast client-side with a one-line remedy — never a raw backend error.
+
+**Metadata filters** (on `datasets`, `models`, and `similar`): `--task` (exact tag, e.g. `text-generation`), `--license` (e.g. `apache-2.0`), `--language` (e.g. `en` — datasets only in practice; model cards rarely set it), and `--modified-since` (ISO date, e.g. `2026-01-01`). All are exact-match and combine with the semantic query:
+
+```bash
+hf semsearch models "OCR" --task image-text-to-text --license apache-2.0
+hf semsearch datasets "speech" --language en --modified-since 2026-01-01
+```
 
 ### `hf semsearch datasets "medieval manuscripts" -k 5`
 
@@ -111,6 +118,24 @@ $ hf semsearch similar this/does-not-exist-xyz          # stderr, exit 1:
 Error: 'this/does-not-exist-xyz' not found as a dataset or model in the index
 Hint: check the id, or search for it: hf semsearch datasets "<name>"
 ```
+
+## Bulk / offline access
+
+The CLI is built for interactive, per-query lookups. When you want the *whole* corpus — filtering or aggregating across the Hub, joining against your own data, or working offline — go straight to the public dataset the backend is built from, [`davanstrien/search-v3-embeddings`](https://huggingface.co/datasets/davanstrien/search-v3-embeddings): one-sentence summaries, 1024-d embeddings, and card metadata for ~536k datasets and ~636k models. After any search, the CLI prints this as a stderr hint.
+
+DuckDB reads it directly over `hf://`, pruning to the columns you name (so metadata-only queries never touch the vectors):
+
+```bash
+duckdb -c "
+  SELECT id, summary, license, downloads
+  FROM 'hf://datasets/davanstrien/search-v3-embeddings/models/part-*.parquet'
+  WHERE task = 'text-generation' AND low_confidence = false
+  ORDER BY downloads DESC
+  LIMIT 20
+"
+```
+
+The embeddings are in there too (fp16, 1024-d, null for refusal rows) for building your own index or running `array_cosine_similarity` in DuckDB — see the dataset card for the schema and a find-similar example.
 
 ## Backend
 

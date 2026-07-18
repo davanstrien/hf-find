@@ -65,6 +65,27 @@ FormatOpt = Annotated[
     ),
 ]
 
+# Metadata filters — exact-match on the card fields, shared across commands.
+TaskOpt = Annotated[
+    Optional[str],
+    typer.Option("--task", help="Filter by task/pipeline tag (exact match, e.g. text-generation)."),
+]
+LicenseOpt = Annotated[
+    Optional[str],
+    typer.Option("--license", help="Filter by license (exact match, e.g. apache-2.0)."),
+]
+LanguageOpt = Annotated[
+    Optional[str],
+    typer.Option("--language", help="Filter by language tag (exact match, e.g. en). Datasets only in practice."),
+]
+ModifiedSinceOpt = Annotated[
+    Optional[str],
+    typer.Option("--modified-since", help="Only repos modified on/after this ISO date (e.g. 2026-01-01)."),
+]
+
+# The public corpus behind the backend — surfaced as a bulk/offline escape hatch.
+_CORPUS_REPO = "davanstrien/search-v3-embeddings"
+
 
 # --------------------------------------------------------------------------- #
 # rendering
@@ -229,13 +250,29 @@ def _card_cmd(kind: str, repo_id: str) -> str:
     return f"hf {'datasets' if kind == 'datasets' else 'models'} card {repo_id}"
 
 
+def _escape_hatch_hint(kind: str) -> None:
+    """Point at the public corpus for bulk/offline work the API isn't shaped for.
+
+    Two stderr lines (human/agent only): the repo, plus a one-line DuckDB example
+    over its parquet. Filtering/aggregating the whole Hub is a query, not N API calls.
+    """
+    cfg = "datasets" if kind == "datasets" else "models"
+    _hint(f"bulk/offline? the full corpus is public: hf://datasets/{_CORPUS_REPO}")
+    _hint(
+        f"  e.g. duckdb \"SELECT id, summary FROM "
+        f"'hf://datasets/{_CORPUS_REPO}/{cfg}/part-*.parquet' LIMIT 10\""
+    )
+
+
 def _search_hints(items: list[dict[str, Any]], kind: str) -> None:
     if not items:
         _hint("no matches — try broader terms or drop --min-likes/--min-downloads filters")
+        _escape_hatch_hint(kind)
         return
     top = items[0].get(_id_key(kind), "")
     _hint(f"explore: hf semsearch similar {top}")
     _hint(f"view: {_card_cmd(kind, top)}")
+    _escape_hatch_hint(kind)
 
 
 def _similar_hints(items: list[dict[str, Any]], kind: str) -> None:
@@ -257,6 +294,10 @@ def datasets(
     sort_by: Annotated[Optional[str], typer.Option("--sort-by", help="Re-rank by 'likes' or 'downloads'.")] = None,
     min_likes: Annotated[Optional[int], typer.Option("--min-likes")] = None,
     min_downloads: Annotated[Optional[int], typer.Option("--min-downloads")] = None,
+    task: TaskOpt = None,
+    license: LicenseOpt = None,
+    language: LanguageOpt = None,
+    modified_since: ModifiedSinceOpt = None,
     format: FormatOpt = OutputFormat.auto,
 ) -> None:
     """Semantic search over datasets."""
@@ -265,7 +306,8 @@ def datasets(
     _validate_k(k)
     try:
         items = client.search(
-            "datasets", query, k=k, sort_by=sort_by, min_likes=min_likes, min_downloads=min_downloads
+            "datasets", query, k=k, sort_by=sort_by, min_likes=min_likes, min_downloads=min_downloads,
+            task=task, license=license, language=language, modified_after=modified_since,
         )
     except SearchError as e:
         _fail(e)
@@ -286,6 +328,10 @@ def models(
     max_params: Annotated[
         Optional[str], typer.Option("--max-params", help="Maximum params, e.g. 2B, 500M, or 2000000000.")
     ] = None,
+    task: TaskOpt = None,
+    license: LicenseOpt = None,
+    language: LanguageOpt = None,
+    modified_since: ModifiedSinceOpt = None,
     format: FormatOpt = OutputFormat.auto,
 ) -> None:
     """Semantic search over models."""
@@ -304,6 +350,10 @@ def models(
             min_downloads=min_downloads,
             min_param_count=min_pc,
             max_param_count=max_pc,
+            task=task,
+            license=license,
+            language=language,
+            modified_after=modified_since,
         )
     except SearchError as e:
         _fail(e)
@@ -316,17 +366,32 @@ def similar(
     repo_id: Annotated[str, typer.Argument(help="Dataset or model id, e.g. 'org/name'.")],
     type: Annotated[Optional[str], typer.Option("--type", help="'dataset' or 'model'. Default: auto-detect.")] = None,
     k: Annotated[int, typer.Option("-k", "--k", help="Number of results.")] = 10,
+    task: TaskOpt = None,
+    license: LicenseOpt = None,
+    language: LanguageOpt = None,
+    modified_since: ModifiedSinceOpt = None,
     format: FormatOpt = OutputFormat.auto,
 ) -> None:
     """Find datasets or models similar to a given repo (auto-detects the type)."""
     out.set_mode(format)
     _validate_k(k)
 
-    order = {"dataset": ["datasets"], "model": ["models"]}.get((type or "").lower(), ["datasets", "models"])
+    if (type or "").lower() in ("dataset", "model"):
+        order = {"dataset": ["datasets"], "model": ["models"]}[type.lower()]
+    else:
+        # One /lookup call resolves the type instead of probing both routes. If
+        # the route is absent (older backend), fall back to the try-both probe.
+        try:
+            resolved = client.lookup(repo_id)
+        except SearchError as e:
+            _fail(e)  # genuine not-in-index (not_found) or connectivity — surface it
+        order = {"dataset": ["datasets"], "model": ["models"]}.get(resolved, ["datasets", "models"])
+
     last: SearchError | None = None
     for kind in order:
         try:
-            items = client.similarity(kind, repo_id, k=k)
+            items = client.similarity(kind, repo_id, k=k, task=task, license=license,
+                                      language=language, modified_after=modified_since)
             _emit(items, kind, repo_id=repo_id)
             _similar_hints(items, kind)
             return
