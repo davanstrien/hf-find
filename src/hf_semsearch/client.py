@@ -64,6 +64,14 @@ def _get(path: str, params: dict[str, Any]) -> dict[str, Any]:
             f"backend returned 404 with no API body at {base_url()} — wrong URL or the Space is down?",
             "check HF_SEMSEARCH_URL, or the Space status: hf semsearch status",
         )
+    if resp.status_code == 422:
+        # Validation error: the request was malformed, so retrying won't help.
+        # Client-side checks catch the common cases (k, params) before we get
+        # here; this is the backstop, and it never says "retry".
+        raise SearchError(
+            "invalid request — the backend rejected an argument",
+            "check the argument values (e.g. -k >= 1, valid --sort-by); this is not a transient error",
+        )
     if resp.status_code >= 400:
         raise SearchError(
             f"backend returned HTTP {resp.status_code}: {_detail(resp) or resp.text[:200]}",

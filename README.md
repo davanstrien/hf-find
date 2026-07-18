@@ -27,7 +27,7 @@ hf semsearch trending [datasets|models]              # what's trending
 hf semsearch status                                  # backend health + index freshness
 ```
 
-Common options: `-k N` (results), `--sort-by likes|downloads`, `--min-likes`, `--min-downloads`; models also take `--min-params` / `--max-params`. `similar` takes `--type dataset|model` to skip auto-detection.
+Common options: `-k N` (results — `trending` also accepts `-k`, with `-n`/`--limit` as aliases), `--sort-by likes|downloads`, `--min-likes`, `--min-downloads`; models also take `--min-params` / `--max-params`, which accept size suffixes (`2B`, `500M`, `1.5B`) or plain ints. `similar` takes `--type dataset|model` to skip auto-detection. Invalid input (empty query, `-k 0`, an unparseable size) fails fast client-side with a one-line remedy — never a raw backend error.
 
 ### `hf semsearch datasets "medieval manuscripts" -k 5`
 
@@ -85,12 +85,14 @@ $ hf semsearch datasets "medieval manuscripts" -k 2 --format json   # stdout:
 
 The JSON object carries `{query, type, count, results[]}`; each result has `similarity`, `summary`, `likes`, `downloads` (and `param_count` for models). `similar` swaps `query` for `repo_id`; `trending` and `status` return their own shapes (`status` is a single object, so it emits JSON in both agent and json modes).
 
-Hints and errors go to **stderr**, so piping stdout to a TSV or JSON parser stays clean:
+Hints go to **stderr** in `human` and `agent` modes:
 
 ```
 Hint: explore: hf semsearch similar wjbmattingly/medieval-letters-htr-synthetic
 Hint: view: hf datasets card wjbmattingly/medieval-letters-htr-synthetic
 ```
+
+**`--format json` and `--format quiet` keep stderr empty**, so a combined `2>&1` capture still parses cleanly — no need to remember `2>/dev/null`. (The two chatty modes, `human` and `agent`, are the ones a person or an agent reads interactively; the two machine formats stay silent.)
 
 ### Chained-discovery hints
 

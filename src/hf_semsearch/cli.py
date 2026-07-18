@@ -28,18 +28,40 @@ from huggingface_hub.utils import tabulate
 from . import client
 from .client import SearchError
 
+# Rich collapses single newlines, so each line is its own paragraph (blank-line
+# separated) to survive help rendering.
+_EPILOG = (
+    "Examples:\n\n"
+    '  hf semsearch datasets "digitized herbarium specimens" -k 5\n\n'
+    '  hf semsearch models "OCR" --max-params 2B   (size filter accepts 2B / 500M)\n\n'
+    "  hf semsearch similar biglam/hmd_newspapers   (auto-detects dataset vs model)\n\n"
+    "  hf semsearch trending datasets --format json   (one JSON object for scripts)\n\n"
+    "Output: a table in a terminal; TSV when an agent is detected; --format json for a "
+    "structured object; --format quiet for bare ids. Data on stdout, hints on stderr."
+)
+
 app = typer.Typer(
     name="semsearch",
     help="Semantic search over the Hugging Face Hub (datasets & models).",
+    epilog=_EPILOG,
     no_args_is_help=True,
     add_completion=False,
 )
+
+
+@app.callback()
+def _root() -> None:
+    """Semantic search over the Hugging Face Hub (datasets & models)."""
+
 
 FormatOpt = Annotated[
     OutputFormat,
     typer.Option(
         "--format",
-        help="Output format. 'auto' picks agent/human by context; agents get one JSON object.",
+        help=(
+            "Output format. Default: human table in a terminal, TSV when an agent is detected. "
+            "Use 'json' for one structured object, 'quiet' for bare ids. Data on stdout, hints on stderr."
+        ),
     ),
 ]
 
@@ -144,11 +166,60 @@ def _emit(items: list[dict[str, Any]], kind: str, **envelope: Any) -> None:
             out.table(items, headers=_agent_headers(kind))
 
 
+def _hint(message: str) -> None:
+    """Emit a stderr hint only in human/agent modes.
+
+    `json` and `quiet` are machine formats: keep stderr empty so a `2>&1` capture
+    still parses. This matches `quiet`'s native behavior and overrides the sink,
+    which otherwise keeps hints in `json` mode.
+    """
+    if out.mode in (OutputFormat.human, OutputFormat.agent):
+        out.hint(message)
+
+
 def _fail(err: SearchError) -> None:
     out.error(err.message)
     if err.remedy:
-        out.hint(err.remedy)
+        _hint(err.remedy)
     raise typer.Exit(1)
+
+
+# --------------------------------------------------------------------------- #
+# input validation (client-side; never surface the backend's raw 422)
+# --------------------------------------------------------------------------- #
+def _validate_query(query: str) -> None:
+    if not query.strip():
+        _fail(SearchError("query is empty", 'provide search text, e.g. hf semsearch datasets "OCR datasets"'))
+
+
+def _validate_k(k: int, flag: str = "-k") -> None:
+    if k < 1:
+        _fail(SearchError(f"{flag} must be >= 1 (got {k})", f"pass a positive count, e.g. {flag} 10"))
+
+
+_SIZE_FACTORS = {"k": 1_000, "m": 1_000_000, "b": 1_000_000_000, "t": 1_000_000_000_000}
+
+
+def _parse_count(value: Optional[str], flag: str) -> Optional[int]:
+    """Parse an int with an optional K/M/B/T suffix: '2B' -> 2_000_000_000.
+
+    Plain ints ('2000000000'), decimals with a suffix ('1.5B'), and grouping
+    separators ('1_000', '1,000') all work. Invalid input fails cleanly.
+    """
+    if value is None:
+        return None
+    s = value.strip().replace("_", "").replace(",", "")
+    mult = 1
+    if s and s[-1].lower() in _SIZE_FACTORS:
+        mult = _SIZE_FACTORS[s[-1].lower()]
+        s = s[:-1]
+    try:
+        n = int(float(s) * mult)
+    except ValueError:
+        _fail(SearchError(f"{flag}: '{value}' is not a valid size", f"use an int or a K/M/B suffix, e.g. {flag} 2B"))
+    if n < 0:
+        _fail(SearchError(f"{flag} must be >= 0 (got {value})", f"use a non-negative size, e.g. {flag} 500M"))
+    return n
 
 
 # --------------------------------------------------------------------------- #
@@ -160,11 +231,11 @@ def _card_cmd(kind: str, repo_id: str) -> str:
 
 def _search_hints(items: list[dict[str, Any]], kind: str) -> None:
     if not items:
-        out.hint("no matches — try broader terms or drop --min-likes/--min-downloads filters")
+        _hint("no matches — try broader terms or drop --min-likes/--min-downloads filters")
         return
     top = items[0].get(_id_key(kind), "")
-    out.hint(f"explore: hf semsearch similar {top}")
-    out.hint(f"view: {_card_cmd(kind, top)}")
+    _hint(f"explore: hf semsearch similar {top}")
+    _hint(f"view: {_card_cmd(kind, top)}")
 
 
 def _similar_hints(items: list[dict[str, Any]], kind: str) -> None:
@@ -172,8 +243,8 @@ def _similar_hints(items: list[dict[str, Any]], kind: str) -> None:
         return
     top = items[0].get(_id_key(kind), "")
     noun = "datasets" if kind == "datasets" else "models"
-    out.hint(f'search by text: hf semsearch {noun} "<terms>"')
-    out.hint(f"view: {_card_cmd(kind, top)}")
+    _hint(f'search by text: hf semsearch {noun} "<terms>"')
+    _hint(f"view: {_card_cmd(kind, top)}")
 
 
 # --------------------------------------------------------------------------- #
@@ -190,6 +261,8 @@ def datasets(
 ) -> None:
     """Semantic search over datasets."""
     out.set_mode(format)
+    _validate_query(query)
+    _validate_k(k)
     try:
         items = client.search(
             "datasets", query, k=k, sort_by=sort_by, min_likes=min_likes, min_downloads=min_downloads
@@ -207,12 +280,20 @@ def models(
     sort_by: Annotated[Optional[str], typer.Option("--sort-by", help="Re-rank by 'likes' or 'downloads'.")] = None,
     min_likes: Annotated[Optional[int], typer.Option("--min-likes")] = None,
     min_downloads: Annotated[Optional[int], typer.Option("--min-downloads")] = None,
-    min_params: Annotated[Optional[int], typer.Option("--min-params", help="Minimum parameter count.")] = None,
-    max_params: Annotated[Optional[int], typer.Option("--max-params", help="Maximum parameter count.")] = None,
+    min_params: Annotated[
+        Optional[str], typer.Option("--min-params", help="Minimum params, e.g. 100M, 1.5B, or 2000000000.")
+    ] = None,
+    max_params: Annotated[
+        Optional[str], typer.Option("--max-params", help="Maximum params, e.g. 2B, 500M, or 2000000000.")
+    ] = None,
     format: FormatOpt = OutputFormat.auto,
 ) -> None:
     """Semantic search over models."""
     out.set_mode(format)
+    _validate_query(query)
+    _validate_k(k)
+    min_pc = _parse_count(min_params, "--min-params")
+    max_pc = _parse_count(max_params, "--max-params")
     try:
         items = client.search(
             "models",
@@ -221,8 +302,8 @@ def models(
             sort_by=sort_by,
             min_likes=min_likes,
             min_downloads=min_downloads,
-            min_param_count=min_params,
-            max_param_count=max_params,
+            min_param_count=min_pc,
+            max_param_count=max_pc,
         )
     except SearchError as e:
         _fail(e)
@@ -239,6 +320,7 @@ def similar(
 ) -> None:
     """Find datasets or models similar to a given repo (auto-detects the type)."""
     out.set_mode(format)
+    _validate_k(k)
 
     order = {"dataset": ["datasets"], "model": ["models"]}.get((type or "").lower(), ["datasets", "models"])
     last: SearchError | None = None
@@ -266,20 +348,22 @@ def similar(
 @app.command()
 def trending(
     kind: Annotated[str, typer.Argument(help="'datasets' or 'models'.")] = "datasets",
-    limit: Annotated[int, typer.Option("-n", "--limit", help="Number of results.")] = 10,
+    # -k is the unified count flag across commands; -n/--limit kept as compat aliases.
+    limit: Annotated[int, typer.Option("-k", "--limit", "-n", help="Number of results.")] = 10,
     format: FormatOpt = OutputFormat.auto,
 ) -> None:
     """Show trending datasets or models."""
     out.set_mode(format)
     if kind not in ("datasets", "models"):
         _fail(SearchError(f"unknown kind '{kind}'", "use 'datasets' or 'models': hf semsearch trending datasets"))
+    _validate_k(limit)
     try:
         items = client.trending(kind, limit=limit)
     except SearchError as e:
         _fail(e)
     _emit(items, kind)
     if items:
-        out.hint(f"explore: hf semsearch similar {items[0].get(_id_key(kind), '')}")
+        _hint(f"explore: hf semsearch similar {items[0].get(_id_key(kind), '')}")
 
 
 @app.command()
@@ -306,7 +390,7 @@ def status(format: FormatOpt = OutputFormat.auto) -> None:
         case _:
             print(json.dumps(info))
     if not info.get("ready"):
-        out.hint("index not ready — the Space may be booting; retry in ~60s")
+        _hint("index not ready — the Space may be booting; retry in ~60s")
 
 
 def main() -> None:
