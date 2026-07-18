@@ -1,0 +1,29 @@
+[project]
+name = "hf-semsearch"
+version = "0.0.1"
+description = "hf CLI extension: semantic search over Hub datasets & models, with agent-friendly output."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "httpx>=0.27",
+    "typer>=0.12",
+    # Reuses huggingface_hub's private CLI output sink (`OutputFormat`, `out`)
+    # for agent-mode detection and hint/error styling. The enum was named
+    # `OutputFormat` in _output as of ~1.20; pin accordingly. See README.
+    "huggingface_hub>=1.20",
+]
+
+[project.scripts]
+# Console script named `hf-semsearch` -> discovered by the hf extension loader
+# and invoked as `hf semsearch ...`.
+hf-semsearch = "hf_semsearch.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/hf_semsearch"]
+
+[tool.ruff]
+line-length = 120
