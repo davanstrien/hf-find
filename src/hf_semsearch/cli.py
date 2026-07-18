@@ -2,8 +2,9 @@
 
 Queries Daniel's Hub semantic-search backend and applies the house
 agent-ergonomics contract: stdout is data, stderr is hints; humans get an
-aligned table, agents get one JSON object; every error carries its remedy;
-hints point at existing commands the caller can run next (never a pre-fetch).
+aligned table, agents get native-style TSV (JSON via --format json); every
+error carries its remedy; hints point at existing commands the caller can run
+next (never a pre-fetch).
 
 Agent-mode detection, ``--format`` handling, and stderr styling are borrowed
 from ``huggingface_hub``'s own CLI output sink so this reads exactly like the
@@ -109,19 +110,38 @@ def _truncate(text: str, width: int) -> str:
     return text[: width - 1].rstrip() + "…"
 
 
+def _agent_headers(kind: str) -> list[str]:
+    """Column order for agent TSV: id, similarity, counts, [params,] summary last.
+
+    Summary goes last because it is free text; the raw API field names are used
+    (matching the JSON payload) and floats/ints are emitted unrounded for agents.
+    """
+    headers = [_id_key(kind), "similarity", "likes", "downloads"]
+    if kind == "models":
+        headers.append("param_count")
+    headers.append("summary")
+    return headers
+
+
 def _emit(items: list[dict[str, Any]], kind: str, **envelope: Any) -> None:
-    """Write results to stdout in the resolved output mode."""
+    """Write results to stdout in the resolved output mode.
+
+    Mirrors native `hf`: agents get TSV rows (the default when auto-detected),
+    `--format json` gets one structured object, humans get an aligned table.
+    """
     match out.mode:
         case OutputFormat.human:
             if not items:
                 print("No results found.")
             else:
                 print(_human_table(items, kind))
+        case OutputFormat.json:
+            print(json.dumps({**envelope, "type": kind, "count": len(items), "results": items}))
         case OutputFormat.quiet:
             for it in items:
                 print(it.get(_id_key(kind), ""))
-        case _:  # agent + json: one JSON object on stdout
-            print(json.dumps({**envelope, "type": kind, "count": len(items), "results": items}))
+        case _:  # agent (and any other non-human mode): native TSV, no truncation
+            out.table(items, headers=_agent_headers(kind))
 
 
 def _fail(err: SearchError) -> None:

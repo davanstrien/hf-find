@@ -4,7 +4,7 @@ An [`hf` CLI](https://huggingface.co/docs/huggingface_hub/en/guides/cli) extensi
 
 > **Naming is open.** `semsearch` is a working name. Alternatives: `hf sem`, `hf find`, `hf discover`. Change the `short_name` in `install_local.sh` and the `[project.scripts]` entry in `pyproject.toml` together to rename.
 
-It queries a Hub semantic-search backend (embeddings + summaries over ~536k dataset cards and ~636k model cards) and is built to the house **agent-ergonomics contract**: stdout is data, stderr is hints, agents get one JSON object, and every error carries its remedy.
+It queries a Hub semantic-search backend (embeddings + summaries over ~536k dataset cards and ~636k model cards) and is built to the house **agent-ergonomics contract**: stdout is data (TSV for agents, like native `hf`; JSON via `--format json`), stderr is hints, and every error carries its remedy.
 
 ## Install (local, no GitHub)
 
@@ -65,16 +65,27 @@ FatimahEmadEldin/Gutenberg-Arabic-OCR-HTML-Pages 87.1%     1     89 This dataset
 
 ## Agent mode
 
-When a coding agent is driving (detected via `CLAUDECODE`, `CODEX_SANDBOX`, `AI_AGENT`, … — reused from `huggingface_hub`'s own agent detection), output switches automatically: **one JSON object on stdout**, hints on stderr. Force it with `--format agent` or `--format json`; force human output with `--format human`.
+When a coding agent is driving (detected via `CLAUDECODE`, `CODEX_SANDBOX`, `AI_AGENT`, … — reused from `huggingface_hub`'s own agent detection), output switches automatically, mirroring native `hf`: **TSV rows on stdout**, hints on stderr. Force it with `--format agent`; force human output with `--format human`.
+
+TSV columns are `id`, `similarity` (raw float), `likes`, `downloads`, [`param_count` for models,] and `summary` last (free text; tabs/newlines escaped, so it parses as a clean table):
 
 ```bash
-$ AI_AGENT=1 hf semsearch datasets "medieval manuscripts" -k 2   # stdout:
-{"query": "medieval manuscripts", "type": "datasets", "count": 2, "results": [{"dataset_id": "wjbmattingly/medieval-letters-htr-synthetic", "similarity": 0.8107073307037354, "summary": "This dataset provides 8,317 synthetic medieval Latin manuscript pages ...", "likes": 0, "downloads": 97}, {"dataset_id": "Vault-of-History/Medival_Manuscripts", "similarity": 0.8079338073730469, "summary": "...", "likes": 0, "downloads": 0}]}
+$ AI_AGENT=1 hf semsearch models "OCR" -k 2   # stdout (tab-separated):
+model_id	similarity	likes	downloads	param_count	summary
+PleIAs/OCRerrcr	0.7209532856941223	15	3	434014210	OCRerrcr is a DeBERTa-v2-based token classification model for English, French, and German …
+Fondelton/Richardson	0.6932852864265442	0	0	0	This English OCR model is a fine-tune of DeepSeek-OCR …
 ```
 
-Search results carry `{query, type, count, results[]}`; each result has `similarity`, `summary`, `likes`, `downloads` (and `param_count` for models). `similar` swaps `query` for `repo_id`; `trending` and `status` return their own shapes.
+For a structured payload instead, pass **`--format json`** — one object per invocation:
 
-Hints and errors go to **stderr**, so piping stdout to a JSON parser stays clean:
+```bash
+$ hf semsearch datasets "medieval manuscripts" -k 2 --format json   # stdout:
+{"query": "medieval manuscripts", "type": "datasets", "count": 2, "results": [{"dataset_id": "wjbmattingly/medieval-letters-htr-synthetic", "similarity": 0.8107073307037354, "summary": "This dataset provides 8,317 synthetic medieval Latin manuscript pages ...", "likes": 0, "downloads": 97}, {"dataset_id": "Vault-of-History/Medival_Manuscripts", "similarity": 0.8079..., "summary": "...", "likes": 0, "downloads": 0}]}
+```
+
+The JSON object carries `{query, type, count, results[]}`; each result has `similarity`, `summary`, `likes`, `downloads` (and `param_count` for models). `similar` swaps `query` for `repo_id`; `trending` and `status` return their own shapes (`status` is a single object, so it emits JSON in both agent and json modes).
+
+Hints and errors go to **stderr**, so piping stdout to a TSV or JSON parser stays clean:
 
 ```
 Hint: explore: hf semsearch similar wjbmattingly/medieval-letters-htr-synthetic
