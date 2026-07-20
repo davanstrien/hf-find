@@ -13,13 +13,7 @@ hf extensions install davanstrien/hf-semsearch
 hf semsearch --help
 ```
 
-For local development, `install_local.sh` replicates what the extension loader does — an isolated venv under the hf extensions root plus a `manifest.json` — without needing a remote:
-
-```bash
-bash install_local.sh      # re-run any time to pick up code edits
-```
-
-Uninstall: `hf extensions remove semsearch` (or `rm -rf ~/.local/share/hf/extensions/hf-semsearch`).
+Uninstall: `hf extensions remove semsearch`.
 
 ## Usage
 
@@ -27,7 +21,6 @@ Uninstall: `hf extensions remove semsearch` (or `rm -rf ~/.local/share/hf/extens
 hf semsearch datasets "medieval manuscripts"        # semantic dataset search
 hf semsearch models   "OCR" --min-params 100000000  # model search + param filter
 hf semsearch similar  <repo_id>                      # similar repos (auto-detects type)
-hf semsearch datasets "Kallaama corpus" --hybrid     # + exact terms from full card text
 hf semsearch trending [datasets|models]              # what's trending
 hf semsearch status                                  # backend health + index freshness
 ```
@@ -152,19 +145,3 @@ Default: `https://davanstrien-hub-search-v3-dev.hf.space`. Override with `HF_SEM
 
 - Depends on `huggingface_hub`'s CLI output sink (`huggingface_hub.cli._output`), a **private API**, for agent detection and stderr styling — same approach as `hf-ds` / `hf-jobsx`. Loosely pinned (`>=1.12`) for the POC; pin exactly if the sink API shifts.
 - No test suite yet; verified by hand and by blind agent testing.
-
-## Hybrid search (`--hybrid`)
-
-Semantic ranking runs over one-sentence LLM summaries of each card, so exact
-strings that never made it into the summary — project names, column names,
-place names — can be invisible to it. `--hybrid` adds a BM25 channel over the
-**full card text** and fuses the two rankings (RRF):
-
-```bash
-hf semsearch datasets "Kallaama Wolof speech" --hybrid   # finds repos the summary never names
-hf semsearch datasets "bhl_page_id" --hybrid             # findable by column name
-```
-
-Use it when you have a proper noun or an identifier; plain semantic search is
-better for conceptual queries. Falls back to vector-only if the backend has no
-full-text index loaded.

@@ -298,7 +298,6 @@ def datasets(
     license: LicenseOpt = None,
     language: LanguageOpt = None,
     modified_since: ModifiedSinceOpt = None,
-    hybrid: Annotated[bool, typer.Option("--hybrid", help="Also match exact terms in the full card text (BM25), fused with semantic ranking.")] = False,
     format: FormatOpt = OutputFormat.auto,
 ) -> None:
     """Semantic search over datasets."""
@@ -309,7 +308,6 @@ def datasets(
         items = client.search(
             "datasets", query, k=k, sort_by=sort_by, min_likes=min_likes, min_downloads=min_downloads,
             task=task, license=license, language=language, modified_after=modified_since,
-            hybrid=hybrid,
         )
     except SearchError as e:
         _fail(e)
@@ -334,7 +332,6 @@ def models(
     license: LicenseOpt = None,
     language: LanguageOpt = None,
     modified_since: ModifiedSinceOpt = None,
-    hybrid: Annotated[bool, typer.Option("--hybrid", help="Also match exact terms in the full card text (BM25), fused with semantic ranking.")] = False,
     format: FormatOpt = OutputFormat.auto,
 ) -> None:
     """Semantic search over models."""
@@ -357,7 +354,6 @@ def models(
             license=license,
             language=language,
             modified_after=modified_since,
-            hybrid=hybrid,
         )
     except SearchError as e:
         _fail(e)

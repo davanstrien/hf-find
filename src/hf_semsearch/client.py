@@ -101,7 +101,6 @@ def search(
     license: str | None = None,
     language: str | None = None,
     modified_after: str | None = None,
-    hybrid: bool = False,
 ) -> list[dict[str, Any]]:
     """Semantic search over ``datasets`` or ``models``."""
     params: dict[str, Any] = {
@@ -114,7 +113,6 @@ def search(
         "license": license,
         "language": language,
         "modified_after": modified_after,
-        "hybrid": "true" if hybrid else None,
     }
     if kind == "models":
         params["min_param_count"] = min_param_count
