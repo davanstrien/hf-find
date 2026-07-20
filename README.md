@@ -147,3 +147,21 @@ Default: `https://davanstrien-hub-search-v3-dev.hf.space`. Override with `HF_SEM
 
 - Depends on `huggingface_hub`'s CLI output sink (`huggingface_hub.cli._output`), a **private API**, for agent detection and stderr styling — same approach as `hf-ds` / `hf-jobsx`. Loosely pinned (`>=1.12`) for the POC; pin exactly if the sink API shifts.
 - POC status: local only, no remote, no tests yet.
+
+## Iterative refinement (`refine`) — relevance feedback for agents
+
+Named sessions turn search into a learn-my-taste loop (Rocchio over the card
+embeddings, same math as the Hub Feeds prototype):
+
+```bash
+hf semsearch refine my-task --query "historical newspapers OCR"   # seed + first results
+hf semsearch refine my-task --yes org/a,org/b --no org/c          # vote → refined, unseen results
+hf semsearch refine my-task -k 20                                 # just re-pull with current state
+hf semsearch sessions                                             # list; --delete NAME to remove
+```
+
+State lives in `~/.cache/hf-semsearch/sessions/` (override: `HF_SEMSEARCH_HOME`).
+`--type models` at creation pins a session to models (query prefixes differ per
+corpus). `--reset` starts a session over. Voted ids are excluded server-side, so
+each refine surfaces new material. Backend routes used: `/embed_query`,
+`/embeddings_batch`, `/search_vector`.
