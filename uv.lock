@@ -3,7 +3,7 @@ revision = 3
 requires-python = ">=3.10"
 
 [options]
-exclude-newer = "2026-07-18T10:08:10.527763Z"
+exclude-newer = "2026-07-18T10:31:39.930307Z"
 exclude-newer-span = "P2D"
 
 [[package]]
@@ -99,7 +99,7 @@ wheels = [
 ]
 
 [[package]]
-name = "hf-semsearch"
+name = "hf-find"
 version = "0.0.1"
 source = { editable = "." }
 dependencies = [

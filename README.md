@@ -1,28 +1,26 @@
-# hf-semsearch
+# hf-find
 
 An [`hf` CLI](https://huggingface.co/docs/huggingface_hub/en/guides/cli) extension for **semantic search over the Hugging Face Hub** — datasets and models — from your terminal. Search by meaning, not keywords; find similar repos; see what's trending.
-
-> **Naming is open.** `semsearch` is a working name. Alternatives: `hf sem`, `hf find`, `hf discover`. Change the `short_name` in `install_local.sh` and the `[project.scripts]` entry in `pyproject.toml` together to rename.
 
 It queries a Hub semantic-search backend (embeddings + summaries over ~536k dataset cards and ~636k model cards) and is built to the house **agent-ergonomics contract**: stdout is data (TSV for agents, like native `hf`; JSON via `--format json`), stderr is hints, and every error carries its remedy.
 
 ## Install
 
 ```bash
-hf extensions install davanstrien/hf-semsearch
-hf semsearch --help
+hf extensions install davanstrien/hf-find
+hf find --help
 ```
 
-Uninstall: `hf extensions remove semsearch`.
+Uninstall: `hf extensions remove find`.
 
 ## Usage
 
 ```
-hf semsearch datasets "medieval manuscripts"        # semantic dataset search
-hf semsearch models   "OCR" --min-params 100000000  # model search + param filter
-hf semsearch similar  <repo_id>                      # similar repos (auto-detects type)
-hf semsearch trending [datasets|models]              # what's trending
-hf semsearch status                                  # backend health + index freshness
+hf find datasets "medieval manuscripts"        # semantic dataset search
+hf find models   "OCR" --min-params 100000000  # model search + param filter
+hf find similar  <repo_id>                      # similar repos (auto-detects type)
+hf find trending [datasets|models]              # what's trending
+hf find status                                  # backend health + index freshness
 ```
 
 Common options: `-k N` (results — `trending` also accepts `-k`, with `-n`/`--limit` as aliases), `--sort-by likes|downloads`, `--min-likes`, `--min-downloads`; models also take `--min-params` / `--max-params`, which accept size suffixes (`2B`, `500M`, `1.5B`) or plain ints. `similar` takes `--type dataset|model` to skip auto-detection (otherwise it resolves the type in one `/lookup` call). Invalid input (empty query, `-k 0`, an unparseable size) fails fast client-side with a one-line remedy — never a raw backend error.
@@ -30,11 +28,11 @@ Common options: `-k N` (results — `trending` also accepts `-k`, with `-n`/`--l
 **Metadata filters** (on `datasets`, `models`, and `similar`): `--task` (exact tag, e.g. `text-generation`), `--license` (e.g. `apache-2.0`), `--language` (e.g. `en` — datasets only in practice; model cards rarely set it), and `--modified-since` (ISO date, e.g. `2026-01-01`). All are exact-match and combine with the semantic query:
 
 ```bash
-hf semsearch models "OCR" --task image-text-to-text --license apache-2.0
-hf semsearch datasets "speech" --language en --modified-since 2026-01-01
+hf find models "OCR" --task image-text-to-text --license apache-2.0
+hf find datasets "speech" --language en --modified-since 2026-01-01
 ```
 
-### `hf semsearch datasets "medieval manuscripts" -k 5`
+### `hf find datasets "medieval manuscripts" -k 5`
 
 ```
 ID                                            SIM LIKES DLOADS SUMMARY
@@ -48,7 +46,7 @@ jwidmer/missiven-inference                  77.5%     0      0 This dataset cont
 
 (The summary column is truncated to fit the terminal width; likes/downloads are compacted, e.g. `22.2k`.)
 
-### `hf semsearch models "OCR" --min-params 100000000 -k 3`
+### `hf find models "OCR" --min-params 100000000 -k 3`
 
 ```
 ID                      SIM LIKES DLOADS PARAMS SUMMARY
@@ -58,7 +56,7 @@ colaibu/DeepSeek-OCR  68.5%     0      0   3.3B DeepSeek-OCR is a multilingual v
 MdMonsur/dots.ocr-1.5 68.4%     0      0   3.0B dots.ocr-1.5 is a 3B-parameter multimod…
 ```
 
-### `hf semsearch similar wjbmattingly/medieval-letters-htr-synthetic -k 3` (type auto-detected)
+### `hf find similar wjbmattingly/medieval-letters-htr-synthetic -k 3` (type auto-detected)
 
 ```
 ID                                                 SIM LIKES DLOADS SUMMARY
@@ -75,7 +73,7 @@ When a coding agent is driving (detected via `CLAUDECODE`, `CODEX_SANDBOX`, `AI_
 TSV columns are `id`, `similarity` (raw float), `likes`, `downloads`, [`param_count` for models,] and `summary` last (free text; tabs/newlines escaped, so it parses as a clean table):
 
 ```bash
-$ AI_AGENT=1 hf semsearch models "OCR" -k 2   # stdout (tab-separated):
+$ AI_AGENT=1 hf find models "OCR" -k 2   # stdout (tab-separated):
 model_id	similarity	likes	downloads	param_count	summary
 PleIAs/OCRerrcr	0.7209532856941223	15	3	434014210	OCRerrcr is a DeBERTa-v2-based token classification model for English, French, and German …
 Fondelton/Richardson	0.6932852864265442	0	0	0	This English OCR model is a fine-tune of DeepSeek-OCR …
@@ -84,7 +82,7 @@ Fondelton/Richardson	0.6932852864265442	0	0	0	This English OCR model is a fine-t
 For a structured payload instead, pass **`--format json`** — one object per invocation:
 
 ```bash
-$ hf semsearch datasets "medieval manuscripts" -k 2 --format json   # stdout:
+$ hf find datasets "medieval manuscripts" -k 2 --format json   # stdout:
 {"query": "medieval manuscripts", "type": "datasets", "count": 2, "results": [{"dataset_id": "wjbmattingly/medieval-letters-htr-synthetic", "similarity": 0.8107073307037354, "summary": "This dataset provides 8,317 synthetic medieval Latin manuscript pages ...", "likes": 0, "downloads": 97}, {"dataset_id": "Vault-of-History/Medival_Manuscripts", "similarity": 0.8079..., "summary": "...", "likes": 0, "downloads": 0}]}
 ```
 
@@ -93,7 +91,7 @@ The JSON object carries `{query, type, count, results[]}`; each result has `simi
 Hints go to **stderr** in `human` and `agent` modes:
 
 ```
-Hint: explore: hf semsearch similar wjbmattingly/medieval-letters-htr-synthetic
+Hint: explore: hf find similar wjbmattingly/medieval-letters-htr-synthetic
 Hint: view: hf datasets card wjbmattingly/medieval-letters-htr-synthetic
 ```
 
@@ -103,18 +101,18 @@ Hint: view: hf datasets card wjbmattingly/medieval-letters-htr-synthetic
 
 Every result set ends with ≤2 hints (stderr) that point at **existing commands** the caller can run next — never a pre-fetched extra API call:
 
-- after `datasets`/`models` → `explore: hf semsearch similar <top-id>` and `view: hf datasets card <id>`
+- after `datasets`/`models` → `explore: hf find similar <top-id>` and `view: hf datasets card <id>`
 - after `similar` → the text-search variant and the card view
-- after `trending` → `explore: hf semsearch similar <top-id>`
+- after `trending` → `explore: hf find similar <top-id>`
 
 ### Errors carry their remedy
 
 A bad repo id or an unreachable backend prints a one-line cause on stderr **and** the next step:
 
 ```
-$ hf semsearch similar this/does-not-exist-xyz          # stderr, exit 1:
+$ hf find similar this/does-not-exist-xyz          # stderr, exit 1:
 Error: 'this/does-not-exist-xyz' not found as a dataset or model in the index
-Hint: check the id, or search for it: hf semsearch datasets "<name>"
+Hint: check the id, or search for it: hf find datasets "<name>"
 ```
 
 ## Bulk / offline access
@@ -137,9 +135,9 @@ The embeddings are in there too (fp16, 1024-d, null for refusal rows) for buildi
 
 ## Backend
 
-Default: `https://davanstrien-hub-search-v3-dev.hf.space`. Override with `HF_SEMSEARCH_URL`.
+Default: `https://davanstrien-hub-search-api.hf.space`. Override with `HF_FIND_URL`.
 
-> This default is a **`-dev` Space** — free-tier, may cold-start (~60s on first hit), and not a stability guarantee. Point `HF_SEMSEARCH_URL` at a production endpoint when one exists.
+> The backend is a free-tier Space — it may cold-start (~60s on first hit). `hf find status` shows readiness and index freshness.
 
 ## Notes
 

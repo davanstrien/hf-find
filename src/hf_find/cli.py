@@ -1,4 +1,4 @@
-"""``hf semsearch`` — semantic search over the Hugging Face Hub.
+"""``hf find`` — semantic search over the Hugging Face Hub.
 
 Queries Daniel's Hub semantic-search backend and applies the house
 agent-ergonomics contract: stdout is data, stderr is hints; humans get an
@@ -32,16 +32,16 @@ from .client import SearchError
 # separated) to survive help rendering.
 _EPILOG = (
     "Examples:\n\n"
-    '  hf semsearch datasets "digitized herbarium specimens" -k 5\n\n'
-    '  hf semsearch models "OCR" --max-params 2B   (size filter accepts 2B / 500M)\n\n'
-    "  hf semsearch similar biglam/hmd_newspapers   (auto-detects dataset vs model)\n\n"
-    "  hf semsearch trending datasets --format json   (one JSON object for scripts)\n\n"
+    '  hf find datasets "digitized herbarium specimens" -k 5\n\n'
+    '  hf find models "OCR" --max-params 2B   (size filter accepts 2B / 500M)\n\n'
+    "  hf find similar biglam/hmd_newspapers   (auto-detects dataset vs model)\n\n"
+    "  hf find trending datasets --format json   (one JSON object for scripts)\n\n"
     "Output: a table in a terminal; TSV when an agent is detected; --format json for a "
     "structured object; --format quiet for bare ids. Data on stdout, hints on stderr."
 )
 
 app = typer.Typer(
-    name="semsearch",
+    name="find",
     help="Semantic search over the Hugging Face Hub (datasets & models).",
     epilog=_EPILOG,
     no_args_is_help=True,
@@ -210,7 +210,7 @@ def _fail(err: SearchError) -> None:
 # --------------------------------------------------------------------------- #
 def _validate_query(query: str) -> None:
     if not query.strip():
-        _fail(SearchError("query is empty", 'provide search text, e.g. hf semsearch datasets "OCR datasets"'))
+        _fail(SearchError("query is empty", 'provide search text, e.g. hf find datasets "OCR datasets"'))
 
 
 def _validate_k(k: int, flag: str = "-k") -> None:
@@ -270,7 +270,7 @@ def _search_hints(items: list[dict[str, Any]], kind: str) -> None:
         _escape_hatch_hint(kind)
         return
     top = items[0].get(_id_key(kind), "")
-    _hint(f"explore: hf semsearch similar {top}")
+    _hint(f"explore: hf find similar {top}")
     _hint(f"view: {_card_cmd(kind, top)}")
     _escape_hatch_hint(kind)
 
@@ -280,7 +280,7 @@ def _similar_hints(items: list[dict[str, Any]], kind: str) -> None:
         return
     top = items[0].get(_id_key(kind), "")
     noun = "datasets" if kind == "datasets" else "models"
-    _hint(f'search by text: hf semsearch {noun} "<terms>"')
+    _hint(f'search by text: hf find {noun} "<terms>"')
     _hint(f"view: {_card_cmd(kind, top)}")
 
 
@@ -403,7 +403,7 @@ def similar(
     _fail(
         SearchError(
             f"'{repo_id}' not found as a {' or '.join(t.rstrip('s') for t in order)} in the index",
-            'check the id, or search for it: hf semsearch datasets "<name>"',
+            'check the id, or search for it: hf find datasets "<name>"',
         )
         if last is None or last.not_found
         else last
@@ -420,7 +420,7 @@ def trending(
     """Show trending datasets or models."""
     out.set_mode(format)
     if kind not in ("datasets", "models"):
-        _fail(SearchError(f"unknown kind '{kind}'", "use 'datasets' or 'models': hf semsearch trending datasets"))
+        _fail(SearchError(f"unknown kind '{kind}'", "use 'datasets' or 'models': hf find trending datasets"))
     _validate_k(limit)
     try:
         items = client.trending(kind, limit=limit)
@@ -428,7 +428,7 @@ def trending(
         _fail(e)
     _emit(items, kind)
     if items:
-        _hint(f"explore: hf semsearch similar {items[0].get(_id_key(kind), '')}")
+        _hint(f"explore: hf find similar {items[0].get(_id_key(kind), '')}")
 
 
 

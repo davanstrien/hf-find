@@ -12,12 +12,12 @@ from typing import Any
 
 import httpx
 
-DEFAULT_URL = "https://davanstrien-hub-search-v3-dev.hf.space"
+DEFAULT_URL = "https://davanstrien-hub-search-api.hf.space"
 
 
 def base_url() -> str:
-    """Backend base URL, overridable via ``HF_SEMSEARCH_URL``."""
-    return os.environ.get("HF_SEMSEARCH_URL", DEFAULT_URL).rstrip("/")
+    """Backend base URL, overridable via ``HF_FIND_URL``."""
+    return os.environ.get("HF_FIND_URL", DEFAULT_URL).rstrip("/")
 
 
 class SearchError(Exception):
@@ -47,12 +47,12 @@ def _get(path: str, params: dict[str, Any]) -> dict[str, Any]:
         raise SearchError(
             f"backend timed out after 90s ({base_url()})",
             "the -dev Space is free-tier and may be cold-starting; retry once in ~60s, "
-            "or check it: hf semsearch status",
+            "or check it: hf find status",
         ) from exc
     except httpx.HTTPError as exc:
         raise SearchError(
             f"cannot reach backend at {base_url()} ({exc})",
-            "check the URL (HF_SEMSEARCH_URL) or the Space status: hf semsearch status",
+            "check the URL (HF_FIND_URL) or the Space status: hf find status",
         ) from exc
 
     if resp.status_code == 404:
@@ -62,7 +62,7 @@ def _get(path: str, params: dict[str, Any]) -> dict[str, Any]:
         # HTML 404 from the host/gateway: wrong URL or the Space is gone.
         raise SearchError(
             f"backend returned 404 with no API body at {base_url()} — wrong URL or the Space is down?",
-            "check HF_SEMSEARCH_URL, or the Space status: hf semsearch status",
+            "check HF_FIND_URL, or the Space status: hf find status",
         )
     if resp.status_code == 422:
         # Validation error: the request was malformed, so retrying won't help.
@@ -75,7 +75,7 @@ def _get(path: str, params: dict[str, Any]) -> dict[str, Any]:
     if resp.status_code >= 400:
         raise SearchError(
             f"backend returned HTTP {resp.status_code}: {_detail(resp) or resp.text[:200]}",
-            "retry; if it persists, check the Space: hf semsearch status",
+            "retry; if it persists, check the Space: hf find status",
         )
     return resp.json()
 
@@ -158,12 +158,12 @@ def lookup(repo_id: str) -> str | None:
         raise SearchError(
             f"backend timed out after 90s ({base_url()})",
             "the -dev Space is free-tier and may be cold-starting; retry once in ~60s, "
-            "or check it: hf semsearch status",
+            "or check it: hf find status",
         ) from exc
     except httpx.HTTPError as exc:
         raise SearchError(
             f"cannot reach backend at {base_url()} ({exc})",
-            "check the URL (HF_SEMSEARCH_URL) or the Space status: hf semsearch status",
+            "check the URL (HF_FIND_URL) or the Space status: hf find status",
         ) from exc
 
     if resp.status_code == 200:
@@ -172,7 +172,7 @@ def lookup(repo_id: str) -> str | None:
         detail = _detail(resp)
         # Our route's structured "not in either index" — a real miss.
         if detail and "in the index" in detail:
-            raise SearchError(detail, 'check the id, or search for it: hf semsearch datasets "<name>"',
+            raise SearchError(detail, 'check the id, or search for it: hf find datasets "<name>"',
                               not_found=True)
         # FastAPI's default "Not Found" or an HTML 404: the route isn't there
         # (older backend). Signal fallback rather than a hard error.
@@ -181,7 +181,7 @@ def lookup(repo_id: str) -> str | None:
     if resp.status_code >= 400:
         raise SearchError(
             f"backend returned HTTP {resp.status_code}: {_detail(resp) or resp.text[:200]}",
-            "retry; if it persists, check the Space: hf semsearch status",
+            "retry; if it persists, check the Space: hf find status",
         )
     return None
 
