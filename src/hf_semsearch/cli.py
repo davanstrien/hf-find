@@ -25,7 +25,7 @@ import typer
 from huggingface_hub.cli._output import OutputFormat, out
 from huggingface_hub.utils import tabulate
 
-from . import client, refine as refine_store
+from . import client
 from .client import SearchError
 
 # Rich collapses single newlines, so each line is its own paragraph (blank-line
@@ -434,134 +434,6 @@ def trending(
     if items:
         _hint(f"explore: hf semsearch similar {items[0].get(_id_key(kind), '')}")
 
-
-def _split_ids(values: Optional[list[str]]) -> list[str]:
-    """Flatten repeated/comma-separated id options into a clean list."""
-    out: list[str] = []
-    for v in values or []:
-        out.extend(x.strip() for x in v.split(",") if x.strip())
-    return out
-
-
-@app.command()
-def refine(
-    session: Annotated[str, typer.Argument(help="Session name (created on first use). State persists across calls.")],
-    query: Annotated[Optional[str], typer.Option("--query", "-q", help="Set/replace the session's seed topic.")] = None,
-    yes: Annotated[Optional[list[str]], typer.Option("--yes", help="Mark repo id(s) relevant (repeat or comma-separate).")] = None,
-    no: Annotated[Optional[list[str]], typer.Option("--no", help="Mark repo id(s) irrelevant (repeat or comma-separate).")] = None,
-    type: Annotated[str, typer.Option("--type", help="'datasets' or 'models' (fixed at session creation).")] = "datasets",
-    k: Annotated[int, typer.Option("-k", "--k", help="Number of results.")] = 10,
-    reset: Annotated[bool, typer.Option("--reset", help="Discard the session's votes and seed, then start over.")] = False,
-    format: FormatOpt = OutputFormat.auto,
-) -> None:
-    """Iterative search: seed with --query, vote with --yes/--no, re-run to refine.
-
-    Each call folds the votes into a preference vector (Rocchio relevance
-    feedback over the card embeddings) and returns results you haven't voted
-    on. Only VOTED ids are excluded — re-running with no new votes re-pulls
-    the same ranking, not a next page. First call: seed with --query, or vote
-    directly on ids you found via 'hf semsearch datasets/models'. Similarity
-    scores are comparative — trust the rank order, not the absolute values.
-    On multi-topic briefs, spread --yes votes across sub-topics: the ranking
-    follows your votes, so piling onto one theme narrows it (counter-vote or
-    re-seed with --query to re-broaden).
-    """
-    out.set_mode(format)
-    _validate_k(k)
-    if not refine_store.valid_name(session):
-        _fail(SearchError(f"invalid session name '{session}'",
-                          "use letters/digits/dash/underscore, e.g. hf semsearch refine my-task"))
-    if type not in ("datasets", "models"):
-        _fail(SearchError(f"unknown --type '{type}'", "use 'datasets' or 'models'"))
-
-    sess = None if reset else refine_store.load(session)
-    if sess is None:
-        sess = refine_store.new(session, type)
-    kind = sess["kind"]
-
-    try:
-        if query is not None:
-            if not query.strip():
-                _fail(SearchError("--query is empty", 'provide topic text, e.g. --query "historical newspapers OCR"'))
-            sess["query"] = query
-            sess["qvec"] = client.embed_text(query, kind)
-
-        yes_ids, no_ids = _split_ids(yes), _split_ids(no)
-        missing: list[str] = []
-        if yes_ids or no_ids:
-            vecs = client.embeddings_batch(kind, yes_ids + no_ids)
-            missing += refine_store.record_votes(sess, yes_ids, 1, vecs)
-            missing += refine_store.record_votes(sess, no_ids, -1, vecs)
-
-        vec = refine_store.preference_vector(sess)
-        if vec is None:
-            _fail(SearchError(
-                f"session '{session}' has no signal yet",
-                f'seed it: hf semsearch refine {session} --query "<topic>"  (or vote: --yes org/name)',
-            ))
-
-        voted_ids = [v["id"] for v in sess["votes"]]
-        items = client.search_vector(kind, vec, k=k, exclude_ids=voted_ids)
-    except SearchError as e:
-        _fail(e)
-
-    refine_store.save(sess)
-    id_key = _id_key(kind)
-    for it in items:
-        it[id_key] = it.pop("id", it.get(id_key, ""))
-        it.pop("embedding", None)
-    n_yes = sum(1 for v in sess["votes"] if v["dir"] > 0)
-    n_no = len(sess["votes"]) - n_yes
-    _emit(items, kind, session=session, query=sess.get("query"), votes_yes=n_yes, votes_no=n_no)
-
-    for rid in missing:
-        out.error(f"'{rid}' not in the index — vote skipped")
-    if missing:
-        _hint('check ids with: hf semsearch similar <id>  (new repos appear after the daily refresh)')
-    if items:
-        top = items[0].get(id_key, "")
-        _hint(f"vote, then re-run to refine: hf semsearch refine {session} --yes {top} --no <id>")
-        _hint(f"session state: {n_yes}✓ {n_no}✗ · list sessions: hf semsearch sessions")
-
-
-@app.command()
-def sessions(
-    delete: Annotated[Optional[str], typer.Option("--delete", help="Delete the named session.")] = None,
-    format: FormatOpt = OutputFormat.auto,
-) -> None:
-    """List (or delete) refine sessions."""
-    out.set_mode(format)
-    if delete is not None:
-        if refine_store.delete(delete):
-            print(f"deleted session '{delete}'")
-        else:
-            _fail(SearchError(f"no session named '{delete}'", "list sessions: hf semsearch sessions"))
-        return
-    rows = [
-        {
-            "session": s["name"],
-            "type": s["kind"],
-            "query": s.get("query") or "-",
-            "yes": sum(1 for v in s["votes"] if v["dir"] > 0),
-            "no": sum(1 for v in s["votes"] if v["dir"] < 0),
-        }
-        for s in refine_store.list_all()
-    ]
-    match out.mode:
-        case OutputFormat.human:
-            if not rows:
-                print("No refine sessions yet.")
-                _hint('start one: hf semsearch refine my-task --query "<topic>"')
-            else:
-                print(tabulate([list(r.values()) for r in rows],
-                               headers=["SESSION", "TYPE", "QUERY", "YES", "NO"]))
-        case OutputFormat.json:
-            print(json.dumps({"count": len(rows), "sessions": rows}))
-        case OutputFormat.quiet:
-            for r in rows:
-                print(r["session"])
-        case _:
-            out.table(rows, headers=["session", "type", "query", "yes", "no"])
 
 
 @app.command()
