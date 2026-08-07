@@ -29,5 +29,5 @@ jobs:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          model: huggingface/deepseek-ai/DeepSeek-V4-Flash-0731:preferred
+          model: huggingface/deepseek-ai/DeepSeek-V4-Flash-0731
           use_github_token: true
