@@ -213,9 +213,14 @@ def _validate_query(query: str) -> None:
         _fail(SearchError("query is empty", 'provide search text, e.g. hf find datasets "OCR datasets"'))
 
 
+# The backend caps k at 100; catching it here keeps the promise that invalid
+# input fails fast client-side with a remedy, never a raw backend rejection.
+_MAX_K = 100
+
+
 def _validate_k(k: int, flag: str = "-k") -> None:
-    if k < 1:
-        _fail(SearchError(f"{flag} must be >= 1 (got {k})", f"pass a positive count, e.g. {flag} 10"))
+    if not 1 <= k <= _MAX_K:
+        _fail(SearchError(f"{flag} must be between 1 and {_MAX_K} (got {k})", f"pass a count in range, e.g. {flag} 10"))
 
 
 _SIZE_FACTORS = {"k": 1_000, "m": 1_000_000, "b": 1_000_000_000, "t": 1_000_000_000_000}
@@ -290,7 +295,7 @@ def _similar_hints(items: list[dict[str, Any]], kind: str) -> None:
 @app.command()
 def datasets(
     query: Annotated[str, typer.Argument(help="Free-text query.")],
-    k: Annotated[int, typer.Option("-k", "--k", help="Number of results.")] = 10,
+    k: Annotated[int, typer.Option("-k", "--k", help="Number of results (1-100).")] = 10,
     sort_by: Annotated[Optional[str], typer.Option("--sort-by", help="Re-rank by 'likes' or 'downloads'.")] = None,
     min_likes: Annotated[Optional[int], typer.Option("--min-likes")] = None,
     min_downloads: Annotated[Optional[int], typer.Option("--min-downloads")] = None,
@@ -318,7 +323,7 @@ def datasets(
 @app.command()
 def models(
     query: Annotated[str, typer.Argument(help="Free-text query.")],
-    k: Annotated[int, typer.Option("-k", "--k", help="Number of results.")] = 10,
+    k: Annotated[int, typer.Option("-k", "--k", help="Number of results (1-100).")] = 10,
     sort_by: Annotated[Optional[str], typer.Option("--sort-by", help="Re-rank by 'likes' or 'downloads'.")] = None,
     min_likes: Annotated[Optional[int], typer.Option("--min-likes")] = None,
     min_downloads: Annotated[Optional[int], typer.Option("--min-downloads")] = None,
@@ -365,7 +370,7 @@ def models(
 def similar(
     repo_id: Annotated[str, typer.Argument(help="Dataset or model id, e.g. 'org/name'.")],
     type: Annotated[Optional[str], typer.Option("--type", help="'dataset' or 'model'. Default: auto-detect.")] = None,
-    k: Annotated[int, typer.Option("-k", "--k", help="Number of results.")] = 10,
+    k: Annotated[int, typer.Option("-k", "--k", help="Number of results (1-100).")] = 10,
     task: TaskOpt = None,
     license: LicenseOpt = None,
     language: LanguageOpt = None,
@@ -414,7 +419,7 @@ def similar(
 def trending(
     kind: Annotated[str, typer.Argument(help="'datasets' or 'models'.")] = "datasets",
     # -k is the unified count flag across commands; -n/--limit kept as compat aliases.
-    limit: Annotated[int, typer.Option("-k", "--limit", "-n", help="Number of results.")] = 10,
+    limit: Annotated[int, typer.Option("-k", "--limit", "-n", help="Number of results (1-100).")] = 10,
     format: FormatOpt = OutputFormat.auto,
 ) -> None:
     """Show trending datasets or models."""

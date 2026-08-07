@@ -70,7 +70,7 @@ def _get(path: str, params: dict[str, Any]) -> dict[str, Any]:
         # here; this is the backstop, and it never says "retry".
         raise SearchError(
             "invalid request — the backend rejected an argument",
-            "check the argument values (e.g. -k >= 1, valid --sort-by); this is not a transient error",
+            "check the argument values (e.g. -k between 1 and 100, valid --sort-by); this is not a transient error",
         )
     if resp.status_code >= 400:
         raise SearchError(
