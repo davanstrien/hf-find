@@ -15,10 +15,9 @@ jobs:
     runs-on: ubuntu-latest
 
     permissions:
-      id-token: write
-      contents: read
-      pull-requests: read
-      issues: read
+      contents: write
+      pull-requests: write
+      issues: write
 
     steps:
       - name: Checkout repository
@@ -28,5 +27,7 @@ jobs:
         uses: sst/opencode/github@latest
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           model: huggingface/deepseek-ai/DeepSeek-V4-Flash-0731:preferred
+          use_github_token: true
