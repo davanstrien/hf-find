@@ -23,7 +23,7 @@ hf find trending [datasets|models]              # what's trending
 hf find status                                  # backend health + index freshness
 ```
 
-Common options: `-k N` (results — `trending` also accepts `-k`, with `-n`/`--limit` as aliases), `--sort-by likes|downloads`, `--min-likes`, `--min-downloads`; models also take `--min-params` / `--max-params`, which accept size suffixes (`2B`, `500M`, `1.5B`) or plain ints. `similar` takes `--type dataset|model` to skip auto-detection (otherwise it resolves the type in one `/lookup` call). Invalid input (empty query, `-k 0`, an unparseable size) fails fast client-side with a one-line remedy — never a raw backend error.
+Common options: `-k N` (results, 1–100 — the backend caps at 100; `trending` also accepts `-k`, with `-n`/`--limit` as aliases), `--sort-by likes|downloads`, `--min-likes`, `--min-downloads`; models also take `--min-params` / `--max-params`, which accept size suffixes (`2B`, `500M`, `1.5B`) or plain ints. `similar` takes `--type dataset|model` to skip auto-detection (otherwise it resolves the type in one `/lookup` call). Invalid input (empty query, `-k 0`, `-k 200`, an unparseable size) fails fast client-side with a one-line remedy — never a raw backend error.
 
 **Metadata filters** (on `datasets`, `models`, and `similar`): `--task` (exact tag, e.g. `text-generation`), `--license` (e.g. `apache-2.0`), `--language` (e.g. `en` — datasets only in practice; model cards rarely set it), and `--modified-since` (ISO date, e.g. `2026-01-01`). All are exact-match and combine with the semantic query:
 
